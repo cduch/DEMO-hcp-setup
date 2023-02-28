@@ -1,3 +1,38 @@
+locals {
+  install_demo_app    = true
+  install_eks_cluster = true
+}
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 3.43"
+    }
+
+    hcp = {
+      source  = "hashicorp/hcp"
+      version = ">= 0.18.0"      
+    }
+
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.14.0"
+    }
+
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.7.0"
+    }
+
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14.0"
+    }
+  }
+
+}
+
 provider "hcp" {
   client_id     = var.hcp_client_id
   client_secret = var.hcp_client_secret
@@ -7,69 +42,127 @@ provider "aws" {
   region = var.region
 }
 
-# Create HVN on HCP
+provider "helm" {
+  kubernetes {
+    host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
+    cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
+    token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
+  }
+}
 
-resource "hcp_hvn" "mainhvn" {
-  hvn_id         = "main-hvn"
+provider "kubernetes" {
+  host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
+  cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
+  token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
+}
+
+provider "kubectl" {
+  host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
+  cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
+  token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
+  load_config_file       = false
+}
+
+data "aws_availability_zones" "available" {
+  filter {
+    name   = "zone-type"
+    values = ["availability-zone"]
+  }
+}
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "2.78.0"
+
+  name                 = "${var.cluster_id}-vpc"
+  cidr                 = "10.0.0.0/16"
+  azs                  = data.aws_availability_zones.available.names
+  public_subnets       = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  private_subnets      = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_dns_hostnames = true
+}
+
+data "aws_eks_cluster" "cluster" {
+  count = local.install_eks_cluster ? 1 : 0
+  name  = module.eks[0].cluster_id
+}
+
+data "aws_eks_cluster_auth" "cluster" {
+  count = local.install_eks_cluster ? 1 : 0
+  name  = module.eks[0].cluster_id
+}
+
+module "eks" {
+  count                  = local.install_eks_cluster ? 1 : 0
+  source                 = "terraform-aws-modules/eks/aws"
+  version                = "17.24.0"
+  kubeconfig_api_version = "client.authentication.k8s.io/v1beta1"
+
+  cluster_name    = "${var.cluster_id}-eks"
+  cluster_version = "1.21"
+  subnets         = module.vpc.private_subnets
+  vpc_id          = module.vpc.vpc_id
+
+  manage_aws_auth = false
+
+  node_groups = {
+    application = {
+      name_prefix    = "hashicups"
+      instance_types = ["t3a.medium"]
+
+      desired_capacity = 3
+      max_capacity     = 3
+      min_capacity     = 3
+    }
+  }
+}
+
+# The HVN created in HCP
+resource "hcp_hvn" "main" {
+  hvn_id         = var.hvn_id
   cloud_provider = "aws"
   region         = var.region
-  cidr_block     = "172.25.16.0/20"
-}
-
-/*
-# create Peering VPC in AWS
-resource "aws_vpc" "peer" {
-  cidr_block = "10.220.0.0/16"
-  tags = 
-}
-*/
-
-
-resource "aws_vpc" "peer" {
-  cidr_block = "10.220.0.0/16"
-
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-
-  tags = merge(
-    tomap({
-      Name = "demo-vpc"
-    })
-  )
-
+  cidr_block     = "172.25.32.0/20"
 }
 
 
-
-// Create an HCP network peering to peer your HVN with your AWS VPC. 
-// This resource initially returns in a Pending state, because its provider_peering_id is required to complete acceptance of the connection.
-resource "hcp_aws_network_peering" "netpeering" {
-  peering_id      = var.peer_id
-  hvn_id          = hcp_hvn.mainhvn.hvn_id
-  peer_vpc_id     = aws_vpc.peer.id
-  peer_account_id = aws_vpc.peer.owner_id
-  peer_vpc_region = var.region
+resource "hcp_consul_cluster" "main" {
+  cluster_id         = var.cluster_id
+  hvn_id             = hcp_hvn.main.hvn_id
+  public_endpoint    = true
+  tier               = "development"
+  min_consul_version = "v1.14.0"
 }
 
-// This data source is the same as the resource above, but waits for the connection to be Active before returning.
-data "hcp_aws_network_peering" "netpeering" {
-  hvn_id                = hcp_hvn.mainhvn.hvn_id
-  peering_id            = hcp_aws_network_peering.netpeering.peering_id
-  wait_for_active_state = true
+resource "hcp_consul_cluster_root_token" "token" {
+  cluster_id = hcp_consul_cluster.main.id
 }
 
-// Accept the VPC peering within your AWS account.
-resource "aws_vpc_peering_connection_accepter" "peer" {
-  vpc_peering_connection_id = hcp_aws_network_peering.netpeering.provider_peering_id
-  auto_accept               = true
+module "eks_consul_client" {
+  source  = "hashicorp/hcp-consul/aws//modules/hcp-eks-client"
+  version = "~> 0.9.3"
+
+  boostrap_acl_token = hcp_consul_cluster_root_token.token.secret_id
+  cluster_id         = hcp_consul_cluster.main.cluster_id
+  # strip out url scheme from the public url
+  consul_hosts     = tolist([substr(hcp_consul_cluster.main.consul_public_endpoint_url, 8, -1)])
+  consul_version   = hcp_consul_cluster.main.consul_version
+  datacenter       = hcp_consul_cluster.main.datacenter
+  k8s_api_endpoint = local.install_eks_cluster ? module.eks[0].cluster_endpoint : ""
+
+  # The EKS node group will fail to create if the clients are
+  # created at the same time. This forces the client to wait until
+  # the node group is successfully created.
+  depends_on = [module.eks]
 }
 
-// Create an HVN route that targets your HCP network peering and matches your AWS VPC's CIDR block.
-// The route depends on the data source, rather than the resource, to ensure the peering is in an Active state.
-resource "hcp_hvn_route" "route" {
-  hvn_link         = hcp_hvn.mainhvn.self_link
-  hvn_route_id     = var.route_id
-  destination_cidr = aws_vpc.peer.cidr_block
-  target_link      = data.hcp_aws_network_peering.netpeering.self_link
+module "demo_app" {
+  count   = local.install_demo_app ? 1 : 0
+  source  = "hashicorp/hcp-consul/aws//modules/k8s-demo-app"
+  version = "~> 0.9.3"
+
+  depends_on = [module.eks_consul_client]
 }
+

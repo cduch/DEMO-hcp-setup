@@ -10,7 +10,6 @@ variable "hcp_client_secret" {
   sensitive   = true
 }
 
-
 variable "region" {
   type    = string
   default = "eu-central-1"
@@ -24,4 +23,15 @@ variable "route_id" {
 variable "peer_id" {
   type    = string
   default = "dev"
+}
+
+variable "cluster_id" {
+  type    = string
+  default = "cluster"
+}
+
+variable "hvn_id" {
+  type    = string
+  default = "hvn"
+
 }
