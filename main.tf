@@ -3,65 +3,6 @@ locals {
   install_eks_cluster = true
 }
 
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 3.43"
-    }
-
-    hcp = {
-      source  = "hashicorp/hcp"
-      version = ">= 0.18.0"      
-    }
-
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.14.0"
-    }
-
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.7.0"
-    }
-
-    kubectl = {
-      source  = "gavinbunney/kubectl"
-      version = "~> 1.14.0"
-    }
-  }
-
-}
-
-provider "hcp" {
-  client_id     = var.hcp_client_id
-  client_secret = var.hcp_client_secret
-}
-
-provider "aws" {
-  region = var.region
-}
-
-provider "helm" {
-  kubernetes {
-    host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
-    cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
-    token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
-  }
-}
-
-provider "kubernetes" {
-  host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
-  cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
-  token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
-}
-
-provider "kubectl" {
-  host                   = local.install_eks_cluster ? data.aws_eks_cluster.cluster[0].endpoint : ""
-  cluster_ca_certificate = local.install_eks_cluster ? base64decode(data.aws_eks_cluster.cluster[0].certificate_authority.0.data) : ""
-  token                  = local.install_eks_cluster ? data.aws_eks_cluster_auth.cluster[0].token : ""
-  load_config_file       = false
-}
 
 data "aws_availability_zones" "available" {
   filter {
@@ -101,7 +42,7 @@ module "eks" {
   kubeconfig_api_version = "client.authentication.k8s.io/v1beta1"
 
   cluster_name    = "${var.cluster_id}-eks"
-  cluster_version = "1.21"
+  cluster_version = "1.25"
   subnets         = module.vpc.private_subnets
   vpc_id          = module.vpc.vpc_id
 
