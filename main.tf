@@ -16,11 +16,31 @@ resource "hcp_hvn" "mainhvn" {
   cidr_block     = "172.25.16.0/20"
 }
 
-
+/*
 # create Peering VPC in AWS
 resource "aws_vpc" "peer" {
   cidr_block = "10.220.0.0/16"
+  tags = 
 }
+*/
+
+
+resource "aws_vpc" "peer" {
+  cidr_block = "10.220.0.0/16"
+
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+
+  tags = merge(
+    tomap({
+      Name = "demo-vpc"
+    })
+  )
+
+}
+
+
 
 // Create an HCP network peering to peer your HVN with your AWS VPC. 
 // This resource initially returns in a Pending state, because its provider_peering_id is required to complete acceptance of the connection.
