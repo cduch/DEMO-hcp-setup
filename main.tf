@@ -22,9 +22,6 @@ resource "aws_vpc" "peer" {
 
 }
 
-#data "aws_arn" "peer" {
-#  arn = aws_vpc.peer.arn
-#}
 
 resource "aws_route_table" "route" {
   vpc_id = aws_vpc.peer.id
