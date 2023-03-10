@@ -30,7 +30,7 @@ resource "aws_route_table" "route" {
   vpc_id = aws_vpc.peer.id
 
   route {
-    cidr_block = [hcp_hvn.hvn.cidr_block]
+    cidr_block = hcp_hvn.hvn.cidr_block
     vpc_peering_connection_id = aws_vpc_peering_connection_accepter.peer.vpc_peering_connection_id
   }
 
@@ -62,7 +62,8 @@ resource "aws_vpc_peering_connection_accepter" "peer" {
 }
 
 
-# consul
+# HCP consul
+
 resource "hcp_consul_cluster" "consul_cluster" {
   hvn_id          = hcp_hvn.hvn.hvn_id
   cluster_id      = var.cluster_id
@@ -175,7 +176,7 @@ resource "aws_security_group" "allowconsul" {
 }
 
 
-# vault
+# vault security group
 
 
 
