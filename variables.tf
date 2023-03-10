@@ -20,7 +20,7 @@ variable "route_id" {
   default = "dev-to-main"
 }
 
-variable "peer_id" {
+variable "peering_id" {
   type    = string
   default = "dev"
 }
