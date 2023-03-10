@@ -22,20 +22,20 @@ resource "aws_vpc" "peer" {
 
 }
 
-data "aws_arn" "peer" {
-  arn = aws_vpc.peer.arn
-}
+#data "aws_arn" "peer" {
+#  arn = aws_vpc.peer.arn
+#}
 
 resource "aws_route_table" "route" {
   vpc_id = aws_vpc.peer.id
 
   route {
-    cidr_block = "10.0.1.0/24"
+    cidr_block = [hcp_hvn.hvn.cidr_block]
     vpc_peering_connection_id = aws_vpc_peering_connection_accepter.peer.vpc_peering_connection_id
   }
 
   tags = {
-    Name = "route-to-hvn"
+    Name = "aws-to-hvn"
   }
 }
 
@@ -46,7 +46,7 @@ resource "hcp_aws_network_peering" "peer" {
   peering_id      = var.peering_id
   peer_vpc_id     = aws_vpc.peer.id
   peer_account_id = aws_vpc.peer.owner_id
-  peer_vpc_region = data.aws_arn.peer.region
+  peer_vpc_region = var.region
 }
 
 resource "hcp_hvn_route" "peer_route" {

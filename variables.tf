@@ -17,12 +17,12 @@ variable "region" {
 
 variable "route_id" {
   type    = string
-  default = "dev-to-main"
+  default = "hvn-to-aws"
 }
 
 variable "peering_id" {
   type    = string
-  default = "dev"
+  default = "hvn"
 }
 
 variable "cluster_id" {
