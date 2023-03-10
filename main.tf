@@ -14,6 +14,11 @@ resource "hcp_hvn" "hvn" {
 
 resource "aws_vpc" "peer" {
   cidr_block = "172.31.0.0/16"
+
+  tags = {
+    Name = "HCP-Demo"
+  }  
+
 }
 
 data "aws_arn" "peer" {
