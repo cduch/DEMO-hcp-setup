@@ -176,6 +176,19 @@ resource "aws_security_group" "allowconsul" {
 }
 
 
+
+#vault
+
+resource "hcp_vault_cluster" "vault" {
+  cluster_id = "vault-cluster"
+  hvn_id     = hcp_hvn.hvn.hvn_id
+  tier       = "starter_small"
+  public_endpoint = true
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 # vault security group
 
 
