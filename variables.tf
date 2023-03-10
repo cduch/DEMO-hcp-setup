@@ -27,7 +27,7 @@ variable "peer_id" {
 
 variable "cluster_id" {
   type    = string
-  default = "cluster"
+  default = "consul"
 }
 
 variable "hvn_id" {

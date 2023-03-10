@@ -1,109 +1,52 @@
-locals {
-  install_demo_app    = true
-  install_eks_cluster = true
-}
 
 
-data "aws_availability_zones" "available" {
-  filter {
-    name   = "zone-type"
-    values = ["availability-zone"]
-  }
-}
 
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "2.78.0"
+# hvn
 
-  name                 = "${var.cluster_id}-vpc"
-  cidr                 = "10.0.0.0/16"
-  azs                  = data.aws_availability_zones.available.names
-  public_subnets       = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  private_subnets      = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
-  enable_nat_gateway   = true
-  single_nat_gateway   = true
-  enable_dns_hostnames = true
-}
-
-data "aws_eks_cluster" "cluster" {
-  count = local.install_eks_cluster ? 1 : 0
-  name  = module.eks[0].cluster_id
-}
-
-data "aws_eks_cluster_auth" "cluster" {
-  count = local.install_eks_cluster ? 1 : 0
-  name  = module.eks[0].cluster_id
-}
-
-module "eks" {
-  count                  = local.install_eks_cluster ? 1 : 0
-  source                 = "terraform-aws-modules/eks/aws"
-  version                = "17.24.0"
-  kubeconfig_api_version = "client.authentication.k8s.io/v1beta1"
-
-  cluster_name    = "${var.cluster_id}-eks"
-  cluster_version = "1.25"
-  subnets         = module.vpc.private_subnets
-  vpc_id          = module.vpc.vpc_id
-
-  manage_aws_auth = false
-
-  node_groups = {
-    application = {
-      name_prefix    = "hashicups"
-      instance_types = ["t3a.medium"]
-
-      desired_capacity = 3
-      max_capacity     = 3
-      min_capacity     = 3
-    }
-  }
-}
-
-# The HVN created in HCP
-resource "hcp_hvn" "main" {
+resource "hcp_hvn" "hvn" {
   hvn_id         = var.hvn_id
   cloud_provider = "aws"
   region         = var.region
-  cidr_block     = "172.25.32.0/20"
 }
 
 
-resource "hcp_consul_cluster" "main" {
-  cluster_id         = var.cluster_id
-  hvn_id             = hcp_hvn.main.hvn_id
-  public_endpoint    = true
-  tier               = "development"
-  min_consul_version = "v1.14.0"
+# aws peering
+
+resource "aws_vpc" "peer" {
+  cidr_block = "172.31.0.0/16"
 }
 
-resource "hcp_consul_cluster_root_token" "token" {
-  cluster_id = hcp_consul_cluster.main.id
+data "aws_arn" "peer" {
+  arn = aws_vpc.peer.arn
 }
 
-module "eks_consul_client" {
-  source  = "hashicorp/hcp-consul/aws//modules/hcp-eks-client"
-  version = "~> 0.9.3"
-
-  boostrap_acl_token = hcp_consul_cluster_root_token.token.secret_id
-  cluster_id         = hcp_consul_cluster.main.cluster_id
-  # strip out url scheme from the public url
-  consul_hosts     = tolist([substr(hcp_consul_cluster.main.consul_public_endpoint_url, 8, -1)])
-  consul_version   = hcp_consul_cluster.main.consul_version
-  datacenter       = hcp_consul_cluster.main.datacenter
-  k8s_api_endpoint = local.install_eks_cluster ? module.eks[0].cluster_endpoint : ""
-
-  # The EKS node group will fail to create if the clients are
-  # created at the same time. This forces the client to wait until
-  # the node group is successfully created.
-  depends_on = [module.eks]
+resource "hcp_aws_network_peering" "peer" {
+  hvn_id              = hcp_hvn.hvn.hvn_id
+  peering_id          = var.peering_id
+  peer_vpc_id         = aws_vpc.peer.id
+  peer_account_id     = aws_vpc.peer.owner_id
+  peer_vpc_region     = data.aws_arn.peer.region
 }
 
-module "demo_app" {
-  count   = local.install_demo_app ? 1 : 0
-  source  = "hashicorp/hcp-consul/aws//modules/k8s-demo-app"
-  version = "~> 0.9.3"
-
-  depends_on = [module.eks_consul_client]
+resource "hcp_hvn_route" "peer_route" {
+  hvn_link         = hcp_hvn.hvn.self_link
+  hvn_route_id     = var.route_id
+  destination_cidr = aws_vpc.peer.cidr_block
+  target_link      = hcp_aws_network_peering.peer.self_link
 }
 
+resource "aws_vpc_peering_connection_accepter" "peer" {
+  vpc_peering_connection_id = hcp_aws_network_peering.peer.provider_peering_id
+  auto_accept               = true
+}
+
+
+# consul
+resource "hcp_consul_cluster" "consul_cluster" {
+  hvn_id          = hcp_hvn.hvn.hvn_id
+  cluster_id      = var.cluster_id
+  tier            = "development"
+  public_endpoint = true
+}
+
+# vault
