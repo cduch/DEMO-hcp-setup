@@ -181,9 +181,6 @@ resource "hcp_vault_cluster" "vault" {
   hvn_id     = hcp_hvn.hvn.hvn_id
   tier       = "starter_small"
   public_endpoint = true
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 # vault security group
