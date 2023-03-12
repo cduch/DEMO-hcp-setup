@@ -35,3 +35,15 @@ variable "hvn_id" {
   default = "hvn"
 
 }
+
+variable "owner" {
+  type = string
+}
+
+variable "project" {
+    type = string
+}
+
+variable "environment" {
+    type = string
+}
