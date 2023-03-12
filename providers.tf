@@ -1,11 +1,11 @@
 terraform {
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
+      source = "hashicorp/aws"
     }
 
     hcp = {
-      source  = "hashicorp/hcp"
+      source = "hashicorp/hcp"
 
     }
 
@@ -20,4 +20,11 @@ provider "hcp" {
 
 provider "aws" {
   region = var.region
+  default_tags {
+    tags = {
+      Environment = var.environment
+      Owner       = var.owner
+      Project     = var.project
+    }
+  }
 }
